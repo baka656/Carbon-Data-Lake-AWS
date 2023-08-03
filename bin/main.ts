@@ -18,6 +18,9 @@ import {
   checkServerAccessLogsUseBucketPolicy,
 } from '../resources/setup-checks/setupCheck'
 import { AwsSolutionsChecks, NagSuppressions } from 'cdk-nag'
+import { UtilityBillStack } from '../lib/stacks/stack-utility-bill-processing/stack-utility-bill-processing'
+
+
 
 /**
  * Instantiate a new CDK app object
@@ -35,6 +38,10 @@ const appEnv = {
   region: app.node.tryGetContext('awsRegion') ? app.node.tryGetContext('awsRegion') : process.env.CDK_DEFAULT_REGION,
   account: process.env.CDK_DEFAULT_ACCOUNT,
 }
+
+
+
+
 
 /**
  * Check if cdk context is defined either by context file or command line flags
@@ -109,7 +116,7 @@ const dataPipeline = new DataPipelineStack(app, 'DataPipelineStack', {
   env: appEnv,
 })
 
-const landingBucket = dataPipeline.cdlLandingBucket
+export const landingBucket = dataPipeline.cdlLandingBucket
 const calculatorFunction = dataPipeline.calculatorFunction
 const pipelineStateMachine = dataPipeline.pipelineStateMachine
 const calculatorOutputTable = dataPipeline.calculatorOutputTable
@@ -273,6 +280,11 @@ if (nagEnabled === true) {
   console.log('CDK-nag enabled. Starting cdk-nag review')
   Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }))
 }
+
+const utilityBillStack = new UtilityBillStack(app, 'UtilityBillStack', {
+  landingBucket: landingBucket,
+  env: appEnv,
+});
 
 const testStack = new TestStack(app, 'TestStack', {
   calculatorFunction: calculatorFunction,
