@@ -8,6 +8,7 @@ import csv
 import io
 from datetime import datetime
 
+dynamodb = boto3.client('dynamodb', region_name="us-east-1")
 
 
 LOGGER = logging.getLogger()
@@ -115,7 +116,7 @@ def transform_data(data):
         activity = json.loads(activity['Payload'].read().decode())
         TransformedData.append({
             "activity_event_id": event_id,
-            "asset_id": "vehicle-" + str(x),
+            "asset_id": "utility-bill-" + str(x),
             "origin_measurement_timestamp": entry['bill_date'],
             "supplier": entry['utility_provider_name'],
             "scope": 2,
@@ -165,53 +166,91 @@ def write_csv_bills_to_landing_s3(bills):
     LOGGER.info('Wrote {0} bills to {1}/'.format(len(bills),LANDING_BUCKET_NAME))
     return 
 
-def lambda_handler(event, context):
-    time.sleep(10)
-    resp = s3.list_objects_v2(Bucket=RAW_DATA_BUCKET)
-    bills = [b['Key'] for b in resp['Contents'] if '.pdf' in b['Key']]
-
-    query = {
-                "Queries":[
-                    {
-                        "Text": "What is this customer's name?",
-                        "Alias": "customer_name"
-                    },
-                    {
-                        "Text": "What is this customer's address?",
-                        "Alias": "customer_address"
-                    },
-                    {
-                        "Text": "What is the meter ID?",
-                        "Alias": "es_id"
-                    },
-                    {
-                        "Text": "How many kWhs were used?",
-                        "Alias": "kwh_usage"
-                    },
-                    {
-                        "Text": "What is the statement date?",
-                        "Alias": "bill_date"
-                    },
-                    {
-                        "Text": "What's the company name?",
-                        "Alias": "utility_provider_name"
-                    },
-                    {
-                        "Text": "What's the address at the top of the bill?",
-                        "Alias": "utility_provider_address"
-                    },
-                ]
-
+def get_last_processed_time():
+    LOGGER.info('in get function');
+    try:
+        table="LastProcessedTimeTable"
+        response = dynamodb.get_item(
+            TableName = table,
+            Key={ 
+                'id' : {'S' : 'last_processed_time'}
             }
+        )
+        LOGGER.info(response);
+        return int(response['Item']['timestamp']['N'])
+    except Exception as e:
+        LOGGER.info(e);
+        return 0
 
-    TextractJobs = query_Textract(bills, query)
+def update_last_processed_time(timestamp):
+    try:
+        dynamodb.update_item(
+            TableName='LastProcessedTimeTable',
+            Key={'id': {'S': 'last_processed_time'}},  # Use the correct primary key value 'id'
+            UpdateExpression='SET #ts = :val',  # Update the 'timestamp' attribute with a new value
+            ExpressionAttributeValues={':val': {'N': str(timestamp)}},
+            ExpressionAttributeNames={'#ts': 'timestamp'},  # Use ExpressionAttributeNames to handle reserved words like 'timestamp'
+        )
+    except Exception as e:
+        LOGGER.info('in update exception');
+        dynamodb.put_item(
+            TableName='LastProcessedTimeTable',
+            Item={'id': {'S': 'last_processed_time'}, 'timestamp': {'N' : str(timestamp)}}
+        )
 
-    ExtractedData = retrieve_Textract_query_results(TextractJobs)
+def lambda_handler(event, context):
+    current_time = int(time.time())
+    last_processed_time = get_last_processed_time()
+    LOGGER.info(current_time)
+    LOGGER.info(last_processed_time)
+    if current_time - last_processed_time >= 60:
+        update_last_processed_time(current_time)
+        time.sleep(60)
+        resp = s3.list_objects_v2(Bucket=RAW_DATA_BUCKET)
+        bills = [b['Key'] for b in resp['Contents'] if '.pdf' in b['Key']]
 
-    TransformedBills = transform_data(ExtractedData)
+        query = {
+                    "Queries":[
+                        {
+                            "Text": "What is this customer's name?",
+                            "Alias": "customer_name"
+                        },
+                        {
+                            "Text": "What is this customer's address?",
+                            "Alias": "customer_address"
+                        },
+                        {
+                            "Text": "What is the meter ID?",
+                            "Alias": "es_id"
+                        },
+                        {
+                            "Text": "How many kWhs were used?",
+                            "Alias": "kwh_usage"
+                        },
+                        {
+                            "Text": "What is the statement date?",
+                            "Alias": "bill_date"
+                        },
+                        {
+                            "Text": "What's the company name?",
+                            "Alias": "utility_provider_name"
+                        },
+                        {
+                            "Text": "What's the address at the top of the bill?",
+                            "Alias": "utility_provider_address"
+                        },
+                    ]
 
-    write_json_bills_to_transformed_s3(TransformedBills)
+                }
 
-    write_csv_bills_to_landing_s3(TransformedBills)
+        TextractJobs = query_Textract(bills, query)
+
+        ExtractedData = retrieve_Textract_query_results(TextractJobs)
+
+        TransformedBills = transform_data(ExtractedData)
+
+        write_json_bills_to_transformed_s3(TransformedBills)
+
+        write_csv_bills_to_landing_s3(TransformedBills)
 
     return {'status':'Success!'}

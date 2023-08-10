@@ -2,10 +2,9 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import {
     aws_dynamodb as dynamodb,
-    aws_ec2 as ec2,
     aws_iam as iam,
     aws_s3 as s3,
-    custom_resources as cr,aws_events as events, aws_events_targets as targets,
+    custom_resources as cr,
     CustomResource,
     Duration,
     RemovalPolicy,
@@ -15,7 +14,7 @@ import * as s3n from 'aws-cdk-lib/aws-s3-notifications'
 import { Construct } from "constructs";
 import { CdlS3 } from '../../constructs/construct-cdl-s3-bucket/construct-cdl-s3-bucket'
 import * as logs from "aws-cdk-lib/aws-logs";
-import { delay } from 'lodash';
+import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 
 
 interface UtilityBillStackProps extends StackProps {
@@ -83,6 +82,13 @@ export class UtilityBillStack extends cdk.Stack {
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST
     });
 
+    //---last processed time table--//
+    const lastProcessedTimeTable = new dynamodb.Table(this, 'LastProcessedTimeTable', {
+        tableName: 'LastProcessedTimeTable',
+        partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+        removalPolicy: RemovalPolicy.DESTROY, 
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST
+    });
     // Lambda Layer for aws_lambda_powertools (dependency for the lambda function)
     const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(this, "GridRegiondSelectorPowertoolsLayer",
     `arn:aws:lambda:${this.region}:017000801446:layer:AWSLambdaPowertoolsPython:33`
@@ -130,11 +136,27 @@ export class UtilityBillStack extends cdk.Stack {
         license: 'Apache-2.0',
         description: 'A layer with the latest version of Boto3',
     });
+
+    const dynamoDbTableArn = lastProcessedTimeTable.tableArn; // Replace with the actual DynamoDB table ARN
+
+    const dynamoDbPolicy = new PolicyStatement({
+      effect: Effect.ALLOW,
+      actions: [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      resources: [dynamoDbTableArn],
+    });
+
     // Define Lambda function
     const lambdaFunction = new lambda.Function(this, 'ProcessPDFLambda', {
       functionName: 'UtilityBillExtractorNew',
       runtime: lambda.Runtime.PYTHON_3_9,
-      layers: [layer],
+      layers: [layer, powertoolsLayer],
       code: lambda.Code.fromAsset('lib/stacks/stack-utility-bill-processing/lambda'),
       handler: 'index.lambda_handler',
       timeout: Duration.minutes(5),
@@ -145,27 +167,21 @@ export class UtilityBillStack extends cdk.Stack {
       },
     });
 
+    lambdaFunction.addToRolePolicy(dynamoDbPolicy);
+    lastProcessedTimeTable.grantReadWriteData(lambdaFunction);
+
     // Grant necessary permissions to Lambda function
-    this.rawBucket.grantRead(lambdaFunction);
+    this.rawBucket.grantReadWrite(lambdaFunction);
     this.transformedBucket.grantWrite(lambdaFunction);
     this.landingBucket.grantReadWrite(lambdaFunction);
 
     lambdaFunction.role?.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonTextractFullAccess'));
     selectorFunction.grantInvoke(lambdaFunction);
 
-    // Grant necessary permissions to Lambda function
-    //this.rawBucket.grantRead(lambdaFunction);
-
-
     // Set up event source for the Lambda function to be triggered when a new object is created in the raw bucket
     this.rawBucket.addEventNotification(
         s3.EventType.OBJECT_CREATED,
         new s3n.LambdaDestination(lambdaFunction)
       );
-
-    // new events.Rule(this, 'LambdaDelayRule', {
-    //     schedule: events.Schedule.rate(Duration.minutes(1)),
-    //     targets: [new targets.LambdaFunction(lambdaFunction)],
-    //   });
     }
 }
