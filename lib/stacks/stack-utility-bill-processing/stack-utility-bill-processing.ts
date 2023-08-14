@@ -83,10 +83,10 @@ export class UtilityBillStack extends cdk.Stack {
     });
 
     //---last processed time table--//
-    const lastProcessedTimeTable = new dynamodb.Table(this, 'LastProcessedTimeTable', {
-        tableName: 'LastProcessedTimeTable',
-        partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-        removalPolicy: RemovalPolicy.DESTROY, 
+    const lastProcessedTimeTable = new dynamodb.Table(this, "LastProcessedTimeTable", {
+        partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+        removalPolicy: RemovalPolicy.DESTROY,
+        tableName: "LastProcessedTimeTable",
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST
     });
     // Lambda Layer for aws_lambda_powertools (dependency for the lambda function)
