@@ -218,6 +218,17 @@ NagSuppressions.addStackSuppressions(apiStack, [
   },
 ])
 
+
+// CDL-UTILITY_BILL-STACK --> Create the cdl utility bill stack
+const utilitybillOption = app.node.tryGetContext('deployUtilityBillStack')
+console.log(`Utility Bill Stack deployment option is set to: ${utilitybillOption}`)
+if (utilitybillOption === true) {
+
+  new UtilityBillStack(app, 'UtilityBillStack', {
+    landingBucket: landingBucket,
+    env: appEnv,
+  });
+}
 // CDL-QUICKSIGHT-STACK --> Create the cdl quicksight stack
 const quicksightOption = app.node.tryGetContext('deployQuicksightStack')
 console.log(`Quicksight deployment option is set to: ${quicksightOption}`)
@@ -280,11 +291,6 @@ if (nagEnabled === true) {
   console.log('CDK-nag enabled. Starting cdk-nag review')
   Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }))
 }
-
-const utilityBillStack = new UtilityBillStack(app, 'UtilityBillStack', {
-  landingBucket: landingBucket,
-  env: appEnv,
-});
 
 const testStack = new TestStack(app, 'TestStack', {
   calculatorFunction: calculatorFunction,
