@@ -118,6 +118,7 @@ def transform_data(data):
             "activity_event_id": event_id,
             "asset_id": "utility-bill-" + str(x),
             "origin_measurement_timestamp": entry['bill_date'],
+            "geo": [40.4406, -79.9959],
             "supplier": entry['utility_provider_name'],
             "scope": 2,
             "category": "grid-region-location-based",
