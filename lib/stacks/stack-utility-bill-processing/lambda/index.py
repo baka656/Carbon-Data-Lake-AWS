@@ -146,6 +146,17 @@ def write_json_bills_to_transformed_s3(bills):
         LOGGER.info('Wrote {0} to {1}/'.format(filename,TRANSFORMED_DATA_BUCKET))
     
     LOGGER.info('Wrote {0} bills to {1}/'.format(len(bills),TRANSFORMED_DATA_BUCKET))
+    
+    # Delete the files in RAW_DATA_BUCKET since they are processed
+    resp = s3.list_objects_v2(Bucket=RAW_DATA_BUCKET)
+    pdf_keys = [b['Key'] for b in resp['Contents'] if '.pdf' in b['Key']]
+    try:
+        for pdf_key in pdf_keys:
+            s3.delete_object(Bucket=RAW_DATA_BUCKET, Key=pdf_key)
+            LOGGER.info('Deleted {0}.pdf from {1}/'.format(pdf_key, RAW_DATA_BUCKET))
+    except Exception as e:
+        LOGGER.info('Error deleting {0}.pdf from {1}/: {2}'.format(pdf_key, RAW_DATA_BUCKET, e))
+    
     return
 
 #write csv bills to landing s3 bucket

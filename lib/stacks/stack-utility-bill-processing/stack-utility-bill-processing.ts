@@ -183,5 +183,5 @@ export class UtilityBillStack extends cdk.Stack {
         s3.EventType.OBJECT_CREATED,
         new s3n.LambdaDestination(lambdaFunction)
       );
-}
+  }
 }
