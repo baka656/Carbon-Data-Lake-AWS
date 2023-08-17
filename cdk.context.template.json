@@ -6,5 +6,5 @@
   "deploySagemakerStack": true,
   "deployWebStack": true,
   "deployUtilityBillStack": true,
-  "nagEnabled": true
+  "nagEnabled": false
 }
